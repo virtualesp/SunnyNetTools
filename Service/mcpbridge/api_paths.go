@@ -1,4 +1,4 @@
 package mcpbridge
 
-// SunnyNetHTTPAPIPrefix 本机 HTTP 桥统一路径前缀（REST / SSE / Streamable MCP）。
-const SunnyNetHTTPAPIPrefix = "/sunnynet/tools"
+// MCPStreamablePath 为 Cursor 等通过 Streamable HTTP 接入 MCP 的唯一路由。
+const MCPStreamablePath = "/mcp"

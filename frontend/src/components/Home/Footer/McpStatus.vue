@@ -64,17 +64,10 @@
                 </div>
               </div>
 
-              <div v-if="!enabled" class="mcp-cap-bar">
-                <button type="button" class="mcp-cap-btn" @click="openCapabilities">查看 MCP 能力</button>
-              </div>
-
               <div v-if="enabled" class="mcp-code-wrap">
                 <div class="mcp-code-head">
                   <span class="mcp-code-label">mcp.json 预览</span>
                   <div class="mcp-code-head-actions">
-                    <button type="button" class="mcp-cap-btn mcp-cap-btn-inline" @click="openCapabilities">
-                      查看 MCP 能力
-                    </button>
                     <button
                         type="button"
                         class="mcp-copy-btn mcp-copy-btn-inline"
@@ -95,39 +88,6 @@
       </div>
     </transition>
   </teleport>
-
-  <teleport to="body">
-    <transition name="mcp-overlay-fade">
-      <div v-if="capDialogOpen" class="mcp-cap-overlay" @click.self="closeCapabilities">
-        <div :class="['mcp-cap-dialog', theme ? 'mcp-cap-dialog-dark' : 'mcp-cap-dialog-light']" @click.stop>
-          <div class="mcp-cap-dialog-head">
-            <span class="mcp-cap-dialog-title">MCP 能力说明</span>
-            <div class="mcp-cap-dialog-actions">
-              <button
-                  v-if="capDocUrl"
-                  type="button"
-                  class="mcp-cap-link-btn"
-                  @click="openDocExternal"
-              >
-                在浏览器打开
-              </button>
-              <button type="button" class="mcp-cap-dialog-close" aria-label="关闭" @click="closeCapabilities">×</button>
-            </div>
-          </div>
-          <div v-if="capLoading" class="mcp-cap-loading">加载中…</div>
-          <iframe v-else-if="capDocUrl" class="mcp-cap-iframe" :src="capDocUrl" title="MCP 文档"/>
-          <div v-else class="mcp-cap-list">
-            <div v-for="item in capOps" :key="item.op" class="mcp-cap-item">
-              <div class="mcp-cap-op">{{ item.op }}</div>
-              <p v-if="item.args" class="mcp-cap-meta"><span>参数</span>{{ item.args }}</p>
-              <p class="mcp-cap-desc">{{ item.description }}</p>
-              <p v-if="item.returns" class="mcp-cap-meta"><span>返回</span>{{ item.returns }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </transition>
-  </teleport>
 </template>
 
 <script>
@@ -138,8 +98,6 @@ import {
   MCPEnable,
   MCPDisable,
   MCPStatusJSON,
-  MCPListOpsJSON,
-  MCPDocURL,
 } from "../../../../bindings/changeme/Service/appmain.js";
 
 const COPY_FEEDBACK_MS = 1200;
@@ -155,10 +113,6 @@ export default {
       errMsg: "",
       copied: false,
       copyTimer: null,
-      capDialogOpen: false,
-      capLoading: false,
-      capDocUrl: "",
-      capOps: [],
     };
   },
   computed: {
@@ -166,12 +120,12 @@ export default {
       return Config_IsDark.value;
     },
     mcpJson() {
-      const url = this.streamURL || `http://127.0.0.1:${this.port}/sunnynet/tools/mcp`;
+      const url = this.streamURL || `http://127.0.0.1:${this.port}/mcp`;
       return JSON.stringify({mcpServers: {SunnyNetTools: {url}}}, null, 2);
     },
   },
   mounted() {
-    Tour_Add(this.$refs.mcpBar, 4, "MCP", "查看 MCP 状态；启用后可复制 mcp.json、查看 MCP 能力说明");
+    Tour_Add(this.$refs.mcpBar, 4, "MCP", "查看 MCP 状态；启用后可复制 mcp.json 配置");
     this.refreshStatus();
     Events.On("mcpBridgeChanged", (obj) => {
       const raw = obj?.data?.[0] ?? obj?.data ?? "";
@@ -203,7 +157,7 @@ export default {
       if (st.mcpStreamableURL) {
         this.streamURL = st.mcpStreamableURL;
       } else if (st.httpListenAddr) {
-        this.streamURL = `http://${st.httpListenAddr}/sunnynet/tools/mcp`;
+        this.streamURL = `http://${st.httpListenAddr}/mcp`;
       } else if (!this.enabled) {
         this.streamURL = "";
       }
@@ -225,46 +179,6 @@ export default {
     closePanel() {
       this.panelOpen = false;
       this.errMsg = "";
-      this.closeCapabilities();
-    },
-    closeCapabilities() {
-      this.capDialogOpen = false;
-      this.capLoading = false;
-    },
-    async openCapabilities() {
-      this.capDialogOpen = true;
-      this.capLoading = true;
-      this.capDocUrl = "";
-      this.capOps = [];
-      try {
-        const [opsRaw, docUrl] = await Promise.all([MCPListOpsJSON(), MCPDocURL()]);
-        this.capDocUrl = (docUrl || "").trim();
-        let env = null;
-        try {
-          env = typeof opsRaw === "string" ? JSON.parse(opsRaw) : opsRaw;
-        } catch (_) {
-          env = null;
-        }
-        this.capOps = Array.isArray(env?.capabilities) ? env.capabilities : [];
-      } catch (e) {
-        this.errMsg = String(e?.message || e);
-        this.closeCapabilities();
-      } finally {
-        this.capLoading = false;
-      }
-    },
-    openDocExternal() {
-      if (!this.capDocUrl) {
-        return;
-      }
-      try {
-        const win = window.open(this.capDocUrl, "_blank");
-        if (win) {
-          win.focus();
-        }
-      } catch (_) {
-        /* ignore */
-      }
     },
     async onToggle(wantOn) {
       if (wantOn === this.enabled) {
@@ -779,40 +693,6 @@ export default {
   flex-shrink: 0;
 }
 
-.mcp-cap-bar {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-
-.mcp-cap-btn {
-  border: 1px solid rgba(96, 165, 250, 0.45);
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 13px;
-  cursor: pointer;
-  background: rgba(59, 130, 246, 0.14);
-  color: #60a5fa;
-  transition: opacity 0.15s, transform 0.1s;
-}
-
-.mcp-panel-light .mcp-cap-btn {
-  background: #eff6ff;
-  color: #2563eb;
-  border-color: rgba(37, 99, 235, 0.35);
-}
-
-.mcp-cap-btn-inline {
-  padding: 5px 12px;
-  font-size: 12px;
-  border-radius: 7px;
-  white-space: nowrap;
-}
-
-.mcp-cap-btn:active {
-  transform: scale(0.98);
-}
-
 .mcp-panel-light .mcp-code-head {
   background: rgba(15, 23, 42, 0.04);
 }
@@ -842,200 +722,5 @@ export default {
 .mcp-panel-light .mcp-code {
   color: #334155;
   background: #f1f5f9;
-}
-
-/* 能力层：顶 28px、底栏 30px 不遮挡，宽 100% */
-.mcp-cap-overlay {
-  position: fixed;
-  top: 28px;
-  left: 0;
-  right: 0;
-  bottom: 30px;
-  width: 100%;
-  height: calc(100vh - 58px);
-  z-index: 100000;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: stretch;
-  padding: 0;
-  background: transparent;
-  box-sizing: border-box;
-}
-
-.mcp-cap-dialog {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-  display: flex;
-  flex-direction: column;
-  border-radius: 0;
-  overflow: hidden;
-  border: none;
-  box-shadow: none;
-}
-
-.mcp-cap-dialog-dark {
-  background: #0f172a;
-  color: #e2e8f0;
-}
-
-.mcp-cap-dialog-light {
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.mcp-cap-dialog-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
-  flex-shrink: 0;
-}
-
-.mcp-cap-dialog-title {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.mcp-cap-dialog-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mcp-cap-link-btn {
-  border: none;
-  border-radius: 7px;
-  padding: 5px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-}
-
-.mcp-panel-light .mcp-cap-link-btn {
-  color: #2563eb;
-  background: #dbeafe;
-}
-
-.mcp-cap-dialog-close {
-  border: none;
-  background: rgba(148, 163, 184, 0.15);
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  color: inherit;
-}
-
-.mcp-cap-loading {
-  padding: 48px 16px;
-  text-align: center;
-  opacity: 0.7;
-}
-
-.mcp-cap-iframe {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  border: none;
-  background: #020617;
-}
-
-.mcp-cap-list {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px 14px 16px;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(96, 165, 250, 0.55) rgba(15, 23, 42, 0.35);
-}
-
-.mcp-cap-list::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.mcp-cap-list::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.35);
-  border-radius: 8px;
-  margin: 4px 0;
-}
-
-.mcp-cap-list::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(96, 165, 250, 0.65), rgba(34, 197, 94, 0.45));
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.mcp-cap-list::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(125, 211, 252, 0.85), rgba(74, 222, 128, 0.65));
-  background-clip: padding-box;
-}
-
-.mcp-panel-light .mcp-cap-list {
-  scrollbar-color: rgba(37, 99, 235, 0.45) rgba(226, 232, 240, 0.9);
-}
-
-.mcp-panel-light .mcp-cap-list::-webkit-scrollbar-track {
-  background: rgba(226, 232, 240, 0.95);
-}
-
-.mcp-panel-light .mcp-cap-list::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.55), rgba(34, 197, 94, 0.4));
-  background-clip: padding-box;
-}
-
-.mcp-cap-item {
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.mcp-cap-item:last-child {
-  border-bottom: none;
-}
-
-.mcp-cap-op {
-  font-family: Consolas, Monaco, "Cascadia Code", monospace;
-  font-size: 13px;
-  font-weight: 600;
-  color: #4ade80;
-  margin-bottom: 6px;
-}
-
-.mcp-panel-light .mcp-cap-op {
-  color: #15803d;
-}
-
-.mcp-cap-desc {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.55;
-  opacity: 0.88;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.mcp-cap-meta {
-  margin: 4px 0 0;
-  font-size: 11px;
-  line-height: 1.45;
-  opacity: 0.72;
-}
-
-.mcp-cap-meta span {
-  display: inline-block;
-  min-width: 2.5em;
-  margin-right: 6px;
-  font-weight: 600;
-  opacity: 0.9;
 }
 </style>

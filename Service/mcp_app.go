@@ -21,8 +21,3 @@ func (g *AppMain) MCPDisable() string {
 func (g *AppMain) MCPListOpsJSON() string {
 	return mcp.ListOpsJSON()
 }
-
-// MCPDocURL 返回 MCP 文档页 URL；服务未启用时为空。
-func (g *AppMain) MCPDocURL() string {
-	return mcp.DocURL()
-}

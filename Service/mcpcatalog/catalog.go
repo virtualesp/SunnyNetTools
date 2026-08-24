@@ -3,7 +3,6 @@ package mcpcatalog
 
 import (
 	"encoding/json"
-	"strings"
 )
 
 // BridgeOpCapability 单条桥接能力说明，供 list_supported_ops / MCPListOpsJSON 返回给第三方客户端。
@@ -16,12 +15,12 @@ type BridgeOpCapability struct {
 
 // bridgeOpCatalog 与 mcpbridge.Host.Invoke 支持的 op 一一对应；顺序即 SupportedBridgeOps。
 var bridgeOpCatalog = []BridgeOpCapability{
-	{Op: "ping", Description: "【场景】脚本或 MCP 客户端自检：主程序 TCP 桥已监听且能调度到业务 Host。【效果】无业务副作用，仅证明链路通。【勿用】不可替代 get_status（不含引擎状态）。", Args: "无", Returns: "{\"pong\":true} 表示桥接可读且 Host 可调度。"},
-	{Op: "get_status", Description: "【场景】任何自动化前先读一眼：引擎是否在跑、监听端口、上次错误、系统代理是否指向本机、捕获区是否显示、主列表行数。【效果】只读快照；breakMode 为当前全局拦截状态只读（不可经 MCP 修改，请在 UI 或规则中配置）。", Args: "无", Returns: "{\"sunnyRunning\",\"sunnyPort\",\"sunnyLastError\",\"systemProxyEnabled\",\"captureVisible\",\"breakMode\",\"mainCount\"}；breakMode：0 关 / 1 上行 / 2 下行（只读）。"},
+	{Op: "ping", Description: "【场景】脚本或 MCP 客户端自检：主程序 TCP 桥已监听且能调度到业务 Host。【效果】无业务副作用，仅证明链路通。【勿用】不可替代 get_status（不含抓包工具状态）。", Args: "无", Returns: "{\"pong\":true} 表示桥接可读且 Host 可调度。"},
+	{Op: "get_status", Description: "【场景】任何自动化前先读一眼：抓包工具是否在跑、监听端口、上次错误、系统代理是否指向本机、捕获区是否显示、主列表行数。【效果】只读快照；breakMode 为当前全局拦截状态只读（不可经 MCP 修改，请在 UI 或规则中配置）。", Args: "无", Returns: "{\"sunnyRunning\",\"sunnyPort\",\"sunnyLastError\",\"systemProxyEnabled\",\"captureVisible\",\"breakMode\",\"mainCount\"}；breakMode：0 关 / 1 上行 / 2 下行（只读）。"},
 	{Op: "row_theology", Description: "【场景】校验或读取 rowId 与 theology 的对应关系。【约定】rowId 即 theology 的十进制字符串（rowId=\"66\" ↔ theology=66），无 http-* 等其它格式。【效果】解析 rowId/ids 得到 theology；无效 rowId 时 theology 为 0。", Args: "rowId | rowIds | ids | theology | theologies", Returns: "单条：{\"theology\":number,\"rowId\":string}；多条：{\"items\":[{\"rowId\",\"theology\"},…]}。"},
-	{Op: "engine_start", Description: "【场景】要开始抓包、重放或脚本依赖 Sunny 监听端口时调用。【效果】在指定端口启动 Sunny 引擎；可选是否顺带设置系统代理。【前提】端口未被占用；驱动/设备策略仍按 UI 与 device_* 系列单独处理。", Args: "port? useSystemProxy?", Returns: "{\"ok\":true,\"port\":number}；失败抛错（错误信息在异常文本中）。"},
-	{Op: "engine_stop", Description: "【场景】抓包结束、释放端口、或关闭应用前希望干净停止。【效果】停止引擎；若引擎内部返回提示则 ok 可能为 false 并带 message。", Args: "无", Returns: "{\"ok\":true} 或 {\"ok\":false,\"message\":string}。"},
-	{Op: "capture_hide", Description: "【场景】演示、截图、或自动化时希望主界面隐藏中间抓包列表区域（与 UI「隐藏捕获」同源）。【效果】仅影响主窗口捕获区可见性，不停止引擎。", Args: "无", Returns: "{\"ok\":true}。"},
+	{Op: "engine_start", Description: "【场景】要开始抓包、重放或脚本依赖 Sunny 监听端口时调用。【效果】在指定端口启动 Sunny 抓包工具；可选是否顺带设置系统代理。【前提】端口未被占用；驱动/设备策略仍按 UI 与 device_* 系列单独处理。", Args: "port? useSystemProxy?", Returns: "{\"ok\":true,\"port\":number}；失败抛错（错误信息在异常文本中）。"},
+	{Op: "engine_stop", Description: "【场景】抓包结束、释放端口、或关闭应用前希望干净停止。【效果】停止抓包工具；若抓包工具内部返回提示则 ok 可能为 false 并带 message。", Args: "无", Returns: "{\"ok\":true} 或 {\"ok\":false,\"message\":string}。"},
+	{Op: "capture_hide", Description: "【场景】演示、截图、或自动化时希望主界面隐藏中间抓包列表区域（与 UI「隐藏捕获」同源）。【效果】仅影响主窗口捕获区可见性，不停止抓包工具。", Args: "无", Returns: "{\"ok\":true}。"},
 	{Op: "capture_show", Description: "【场景】在 capture_hide 之后恢复抓包区显示。", Args: "无", Returns: "{\"ok\":true}。"},
 	{Op: "system_proxy_enable", Description: "【场景】希望浏览器等走系统代理的流量经过 Sunny（指向当前 Sunny 端口）。【效果】写入系统代理设置。【注意】需用户环境允许改代理；失败会抛错。", Args: "无", Returns: "{\"ok\":true}；失败抛错。"},
 	{Op: "system_proxy_disable", Description: "【场景】抓包结束或异常退出后，恢复系统不再指向 Sunny。【效果】取消由本工具设置的系统代理路径。", Args: "无", Returns: "{\"ok\":true}；失败抛错。"},
@@ -30,7 +29,7 @@ var bridgeOpCatalog = []BridgeOpCapability{
 	{Op: "break_skip_to_response", Description: "【场景】当前卡在请求阶段断点，希望先放行请求，等响应回来再在响应阶段进入断点（与 UI「跳到响应」类操作同源）。", Args: "theology | theologies | rowId | rowIds | ids", Returns: "单条：{\"ok\":true}；多条：{\"ok\":true,\"count\":n}。"},
 	{Op: "break_sync_request", Description: "【前置】须拦截上行（IsWait+请求阶段）；非拦截直接报错不修改。【限制】不可改 Method。【放行】continue/release:true。", Args: "theology|rowIds requestURL? headersJSON? bodyB64? continue? release?", Returns: "{\"ok\",continued,listUpdated}。"},
 	{Op: "break_sync_response", Description: "【前置】须拦截下行（IsWait+响应阶段）；非拦截直接报错。【放行】continue/release:true。", Args: "theology|rowIds statusCode? headersJSON? bodyB64? continue? release?", Returns: "同 break_sync_request。"},
-	{Op: "http_replay", Description: "【场景】把主列表里已抓到的一条会话按快照再发一遍（HTTP/WS/TCP 等由引擎与快照决定）；用于复现请求、压测单条、或调试脚本。【参数】interceptMode：0 普通重放；1 重放时走请求断点；2 重放时走响应断点（仅单条 HTTP 非 WS 场景与引擎一致）。repeatCount：重复次数（>1 时引擎有并发上限 10）。", Args: "theology|theologies|rowId|rowIds|ids interceptMode? repeatCount?", Returns: "单条：{\"ok\":true}；多条：{\"ok\":true,\"count\":n}。"},
+	{Op: "http_replay", Description: "【场景】把主列表里已抓到的一条会话按快照再发一遍（HTTP/WS/TCP 等由抓包工具与快照决定）；用于复现请求、压测单条、或调试脚本。【参数】interceptMode：0 普通重放；1 重放时走请求断点；2 重放时走响应断点（仅单条 HTTP 非 WS 场景与抓包工具一致）。repeatCount：重复次数（>1 时抓包工具有并发上限 10）。", Args: "theology|theologies|rowId|rowIds|ids interceptMode? repeatCount?", Returns: "单条：{\"ok\":true}；多条：{\"ok\":true,\"count\":n}。"},
 	{Op: "generate_builtin_code", Description: "【场景】已有一条抓到的 HTTP/TCP/WebSocket 会话，要在「Go / C# / Python / cURL / 火山 / 易语言」里生成可粘贴的客户端示例代码（与主界面「生成代码」同一套模板）。UDP 会话不支持，会失败。【语言 language】GoLang、C#、Python、cURL、火山、易语言（须与代码生成器 switch 完全一致）。【模块 module】该语言下的子模板名，例如 Go 侧 net/http、Python 侧 requests；cURL 侧为 Linux Terminal（bash 单引号）/ Windows CMD（cmd 双引号，二进制为 powershell -EncodedCommand）/ Windows PowerShell（curl.exe + 单引号）等，须与 UI 一致。【重要】成功时主程序会把代码写入系统剪贴板，HTTP 返回的 text 为空字符串；text 非空表示错误说明而非代码正文。", Args: "theology|rowId language module", Returns: "{\"text\":string}；成功时 text 常为空（代码在剪贴板）；失败时 text 为错误文案。"},
 	{Op: "engine_apply_advanced", Description: "【场景】不打开设置窗口就要改「高级设置」：强制 TCP 规则脚本、上游代理列表、上游 DNS 模式、出口路由、Socks5 认证、最大请求体长度、是否禁用 TCP/UDP 等（与设置页高级选项、SunnyApplyEngineAdvanced 使用同一份 JSON 结构）。【效果】合并进当前运行中的 Sunny 实例。【参数】payload 为整份 engineAdvanced JSON 字符串；manual 与 UI「手动下发」勾选含义一致（布尔，影响是否记为手动快照等内部逻辑）。", Args: "payload（与 UI engineAdvanced 同结构的 JSON 字符串） manual?（bool）", Returns: "{\"ok\":true}；失败抛错。"},
 	{Op: "main_count", Description: "【场景】分页拉 main_slice 前需要总条数；或监控列表是否为空。【效果】只读当前过滤后的主列表行数。【协定】故意返回 JSON 对象而非裸整数：许多 MCP 宿主对 tools/call 的 result 做 JSON 解码，裸 number 会校验失败。调用方必须把 result 当对象解析后读字段 total；不要假设 result 的类型是 number，也不要为「拿个数」改用 main_slice（除非同时需要列或样本行）。", Args: "无", Returns: "恒为对象 {\"total\": 整数}。与 main_slice / get_status.mainCount 的 total 含义一致。"},
@@ -50,6 +49,7 @@ var bridgeOpCatalog = []BridgeOpCapability{
 	{Op: "main_row_break_get", Description: "【批量】读取主列表行的断点/拦截状态（与 UI「断点模式」列、请求详情放行按钮同源）。【字段】breakMode：0 未拦截；1 请求阶段断点；2 响应阶段断点。isWaiting：是否正卡在 WaitGroup。interceptState：非拦截/上行/下行/拦截。", Args: "theology | theologies | rowId | rowIds | ids | listIndex | listIndexes", Returns: "单条：{theology,rowId,found,breakMode,isWaiting,interceptState,state}；多条：{\"items\":[…]}。"},
 	{Op: "stream_count", Description: "【场景】某 TCP/UDP/WebSocket 会话展开后，子表「流消息」在过滤条件下的总行数。【协定】与 main_count 相同：返回对象 {\"total\"}，不返回裸整数。", Args: "streamKey（一般为 theology 的十进制字符串，与 UI 流表一致）", Returns: "恒为对象 {\"total\": 整数}；解析后读 .total。与 stream_slice 内 total 同义。"},
 	{Op: "stream_slice", Description: "【场景】分页读取某会话的子流消息表（无 main_slice 的全局 columns，列语义随流类型变化）。", Args: "streamKey offset limit", Returns: "流表分页 JSON（含 rows、total 等）。"},
+	{Op: "stream_send", Description: "【场景】向指定 TCP/UDP/WebSocket 会话的流发送一条数据（与 UI 流消息发送同源）。【方向】direction=server/client 或 toServer 布尔；WebSocket 用 wsFrameType（1 文本 / 2 二进制）。", Args: "theology|rowId dataB64|bodyB64 direction? toServer? wsFrameType? sendType?", Returns: "{\"ok\":true,\"messageId\":n}；失败抛错。"},
 	{Op: "http_get_part", Description: "【场景】HTTP 请求体/响应体或 rawRequest/rawResponse 分块读取。【part】requestBody | responseBody | rawRequest | rawResponse。【type】auto（默认，含 C0 控制字节则 base64 否则 str）| hex | base64 | str。【返回】{\"ok\", \"total\", \"type\":实际类型, \"data\"}；HTTP 无 frameType。maxLen=0 时从 offset 起最多 4MB；仅要 total 可先 offset=0 maxLen=0 读 total 字段。", Args: "theology|theologies|rowId|rowIds|ids part type? offset? maxLen?", Returns: "单条：分块 JSON；多条：{\"items\":[…]}。"},
 	{Op: "stream_get_part", Description: "【场景】TCP/UDP/WebSocket 单条流消息正文。【type】同 http_get_part。【返回】WebSocket 额外含 frameType（Text/Binary，来自流表类型列）；TCP/UDP 无 frameType。", Args: "theology|theologies|rowId|rowIds|ids messageId type? offset? maxLen?", Returns: "单条：分块 JSON；多条：{\"items\":[…]}。"},
 	{Op: "stream_get_hex", Description: "【场景】流消息按十六进制读取；等价 stream_get_part 且 type 默认为 hex。", Args: "theology|theologies|rowId|rowIds|ids messageId type? offset? maxLen?", Returns: "同 stream_get_part。"},
@@ -69,7 +69,7 @@ var bridgeOpCatalog = []BridgeOpCapability{
 	{Op: "config_host_update", Description: "【场景】修改指定 id 的 Host 映射。", Args: "id lod? new? note?", Returns: "{\"ok\":true,\"id\",lod,new,note}。"},
 	{Op: "config_get_proxy_dns", Description: "【场景】读取 DNS 解析方式（设置-上游代理/二级代理）。【模式】local/remote/remotes。", Args: "无", Returns: "{\"mode\",\"remoteServer\",\"raw\",convention}。"},
 	{Op: "config_set_proxy_dns", Description: "【场景】设置 DNS 并立即 SetDnsServer 生效；remotes 须 remoteServer（:853）。", Args: "mode remoteServer?", Returns: "{\"ok\",applied,engine,dns,mode}。"},
-	{Op: "config_reapply_engine", Description: "【场景】将 Config 全部引擎项重新同步到 Sunny（TCP/UDP/DNS/代理/MustTcp/JA3/请求大小等）。", Args: "无", Returns: "{\"ok\",applied,engine}。"},
+	{Op: "config_reapply_engine", Description: "【场景】将 Config 全部抓包工具项重新同步到 Sunny（TCP/UDP/DNS/代理/MustTcp/JA3/请求大小等）。", Args: "无", Returns: "{\"ok\",applied,engine}。"},
 	{Op: "config_get_proxy_way", Description: "【场景】读取上游代理列表（含 type：http/https/socks5）。", Args: "无", Returns: "{\"proxies\":[{\"id\",\"url\",\"type\",\"state\",\"note\",\"enabled\"}],\"total\":n,\"convention\":{...}}。"},
 	{Op: "config_proxy_way_add", Description: "【场景】新增上游代理（仅 http/https/socks5）。【必填】url 或 scheme+host+port。【认证】无账号 scheme://host:port；有账号 scheme://user:pass@host:port 或 username+password。", Args: "url | scheme host port username? password? state? note? enabled?", Returns: "{\"ok\",applied,engine,proxy:{id,url,type,state,note}}。"},
 	{Op: "config_proxy_way_update", Description: "【场景】修改上游代理 url/状态/注释（url 须为 http/https/socks5|socket）。", Args: "id url? scheme? host? port? username? password? state? note? enabled?", Returns: "{\"ok\",applied,engine,proxy}。"},
@@ -100,7 +100,7 @@ var bridgeOpCatalog = []BridgeOpCapability{
 	{Op: "config_get_http2_template", Description: "【场景】按名称获取单个 HTTP2 模板。", Args: "name", Returns: "{\"ok\":true,\"template\":{name,label,config}}。"},
 	{Op: "request_cert_list", Description: "【场景】列出请求证书页全部条目（与 Cert UI 同源）。", Args: "无", Returns: "{\"certs\":[…],\"total\":n,\"convention\":{roles,certTypes}}。"},
 	{Op: "request_cert_add", Description: "【场景】新增并载入一条请求证书。【必填】certPath、domain。【P12】password 必填。【可选】role（默认解析及发送）、note。", Args: "certPath domain password? role? note?", Returns: "{\"ok\":true,\"id\",\"status\",\"cert\":{…}}。"},
-	{Op: "request_cert_delete", Description: "【场景】删除指定 id 的请求证书并从引擎卸载。", Args: "id", Returns: "{\"ok\":true,\"id\":n}。"},
+	{Op: "request_cert_delete", Description: "【场景】删除指定 id 的请求证书并从抓包工具卸载。", Args: "id", Returns: "{\"ok\":true,\"id\":n}。"},
 	{Op: "request_cert_update", Description: "【场景】修改指定证书的 domain、note、role，可选更换 certPath/password 并重新载入。", Args: "id domain? note? role? certPath? password?", Returns: "{\"ok\":true,\"id\",\"status\",\"cert\":{…}}。"},
 	{Op: "device_status", Description: "【场景】在 device_load 前判断当前 OS 是否支持、驱动是否已装载。", Args: "无", Returns: "{\"isWindows\":bool,\"deviceLoaded\":bool}。"},
 	{Op: "device_load", Description: "【场景】切换底层捕获驱动（与 SunnyNet.OpenDrive 一致）。【mode】0=Proxifier 类；1=NFAPI；2=Tun（具体以 SunnyNet 文档为准）。", Args: "mode（整数）", Returns: "{\"ok\":bool}。"},
@@ -126,17 +126,22 @@ func init() {
 }
 
 type opsListEnvelope struct {
-	Version      int                  `json:"version"`
-	Ops          []string             `json:"ops"`
-	Capabilities []BridgeOpCapability `json:"capabilities"`
+	Version      int                   `json:"version"`
+	Ops          []string              `json:"ops"`
+	Capabilities []BridgeOpCapability  `json:"capabilities"`
+	Domains      []DomainDefinition    `json:"domains,omitempty"`
+	Actions      []ActionDefinition    `json:"actions,omitempty"`
 }
 
-// SupportedOpsJSON 返回能力目录：ops 为名称列表，capabilities 含 description、args、returns。
+// SupportedOpsJSON 返回能力目录：ops 为名称列表，capabilities 含 description、args、returns；
+// 另附 domains/actions（领域网关元数据）。list_supported_ops 与客户端发现使用。
 func SupportedOpsJSON() string {
 	env := opsListEnvelope{
-		Version:      1,
+		Version:      2,
 		Ops:          append([]string(nil), SupportedBridgeOps...),
 		Capabilities: append([]BridgeOpCapability(nil), bridgeOpCatalog...),
+		Domains:      DomainDefinitions(),
+		Actions:      ActionDefinitions(),
 	}
 	b, _ := json.Marshal(env)
 	return string(b)
@@ -153,33 +158,18 @@ type BridgeMCPTool struct {
 	MCPName     string
 	Op          string
 	Description string
+	// Title 工具展示标题（MCP tool.title，客户端优先显示；取自领域中文标题）。
+	Title string
+	// Domain 非空表示该工具是领域网关工具（sunnynet_<domain>），Op 为空，由网关处理。
+	Domain string
 }
 
 // BridgeStdioMCPTool 已废弃，请使用 BridgeMCPTool。
 type BridgeStdioMCPTool = BridgeMCPTool
 
-// BridgeMCPTools 供主程序 Streamable HTTP Handler 注册全部 MCP Tool。
+// BridgeMCPTools 供主程序 Streamable HTTP Handler 注册全部 MCP Tool（仅领域网关工具，按能力分级）。
 func BridgeMCPTools() []BridgeMCPTool {
-	out := make([]BridgeMCPTool, 0, len(bridgeOpCatalog))
-	for _, c := range bridgeOpCatalog {
-		desc := strings.TrimSpace(c.Description)
-		if opUsesBatchIDs(c.Op) && !strings.Contains(desc, "【批量") {
-			desc = "【批量】多行/多会话请一次传 rowIds 或 theologies，禁止循环单条调用。 " + desc
-		}
-		if a := strings.TrimSpace(c.Args); a != "" && a != "无" {
-			desc += " 参数：" + a
-		}
-		if r := strings.TrimSpace(c.Returns); r != "" {
-			desc += " 返回值：" + r
-		}
-		desc += "（需 SunnyNetTools 主程序已启用 MCP 桥；listIndex=界面序号；theology=会话主键整数；rowId=strconv(theology)。）"
-		out = append(out, BridgeMCPTool{
-			MCPName:     BridgeMCPHTTPPrefix + c.Op,
-			Op:          c.Op,
-			Description: desc,
-		})
-	}
-	return out
+	return GatewayTools()
 }
 
 // BridgeStdioMCPTools 已废弃，请使用 BridgeMCPTools。

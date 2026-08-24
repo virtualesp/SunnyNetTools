@@ -1,24 +1,29 @@
 package mcpbridge
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
+	"net"
+	"net/http"
 	"sync"
+	"time"
 
 	"changeme/Service/mcpcatalog"
 )
 
 const defaultMCPPort = 6987
 
-const bridgeModeHTTP = "http"
-
-// Control 启用/禁用本机 MCP HTTP 桥。
+// Control 管理本机 MCP Streamable HTTP 服务（唯一路由 /mcp）。
 type Control struct {
-	mu             sync.Mutex
-	host           *Host
-	httpBr         *httpBridge
-	httpListenAddr string
-	lastPort       int
+	mu       sync.Mutex
+	host     *Host
+	srv      *http.Server
+	ln       net.Listener
+	addr     string
+	lastPort int
 }
 
 // NewControl 构造 MCP 控制服务。
@@ -26,18 +31,14 @@ func NewControl() *Control {
 	return &Control{host: NewHost()}
 }
 
-// MCPEnable 在 127.0.0.1:port 启动 HTTP MCP。
+// MCPEnable 在 127.0.0.1:port 启动 MCP Streamable HTTP 服务。
 func (c *Control) MCPEnable(port int) string {
-	return c.MCPEnableMode(port, bridgeModeHTTP)
+	return c.MCPEnableMode(port, "http")
 }
 
 // MCPEnableMode 仅支持 http。
 func (c *Control) MCPEnableMode(port int, mode string) string {
 	_ = mode
-	return c.enableHTTP(port)
-}
-
-func (c *Control) enableHTTP(port int) string {
 	if c == nil || c.host == nil {
 		return "MCP 未初始化"
 	}
@@ -45,97 +46,95 @@ func (c *Control) enableHTTP(port int) string {
 		port = defaultMCPPort
 	}
 	c.mu.Lock()
-	if c.httpBr != nil && c.httpBr.Addr() != "" {
+	if c.addr != "" {
 		c.mu.Unlock()
 		return "MCP 已在运行"
 	}
 	c.mu.Unlock()
 
-	host := "127.0.0.1"
-	hb := newHTTPBridge(c.host)
-	if err := hb.Start(host, port); err != nil {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
 		return err.Error()
 	}
+	mux := http.NewServeMux()
+	mux.Handle(MCPStreamablePath, newStreamableMCPHandler(c.host))
+	srv := &http.Server{
+		Handler:      mux,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 0, // SSE 长连接
+	}
 	c.mu.Lock()
-	c.httpBr = hb
-	c.httpListenAddr = hb.Addr()
+	c.ln = ln
+	c.srv = srv
+	c.addr = ln.Addr().String()
 	c.lastPort = port
 	c.mu.Unlock()
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Print("【MCP】服务异常: ", err)
+		}
+	}()
 	notifyMCPBridgeChanged()
 	return ""
 }
 
-// MCPDisable 关闭 MCP HTTP 桥。
+// MCPDisable 关闭 MCP Streamable HTTP 服务。
 func (c *Control) MCPDisable() string {
 	if c == nil {
 		return ""
 	}
 	c.mu.Lock()
-	hb := c.httpBr
-	c.httpBr = nil
-	c.httpListenAddr = ""
+	srv := c.srv
+	ln := c.ln
+	c.srv = nil
+	c.ln = nil
+	c.addr = ""
 	c.mu.Unlock()
-	if hb != nil {
-		hb.Stop()
+	if srv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		_ = srv.Shutdown(ctx)
+		cancel()
+	}
+	if ln != nil {
+		_ = ln.Close()
 	}
 	notifyMCPBridgeChanged()
 	return ""
 }
 
-// MCPStatusJSON 返回桥状态 JSON。
+// MCPStatusJSON 返回 MCP 服务状态 JSON。
 func (c *Control) MCPStatusJSON() string {
 	if c == nil {
 		return `{"enabled":false}`
 	}
 	c.mu.Lock()
-	httpAddr := c.httpListenAddr
+	addr := c.addr
 	lp := c.lastPort
-	httpOn := c.httpBr != nil && c.httpBr.Addr() != ""
+	on := addr != ""
 	c.mu.Unlock()
-	if !httpOn {
+	if !on {
 		lp = defaultMCPPort
 	}
 	mcpURL := ""
-	if httpOn && httpAddr != "" {
-		mcpURL = fmt.Sprintf("http://%s%s", httpAddr, MCPStreamablePath)
+	if on && addr != "" {
+		mcpURL = fmt.Sprintf("http://%s%s", addr, MCPStreamablePath)
 	}
 	out := map[string]any{
-		"enabled":           httpOn,
-		"httpEnabled":       httpOn,
-		"bridgeMode":        bridgeModeHTTP,
-		"httpListenAddr":    httpAddr,
+		"enabled":           on,
+		"bridgeMode":        "http",
+		"httpListenAddr":    addr,
 		"defaultPort":       defaultMCPPort,
 		"lastPort":          lp,
 		"mcpStreamablePath": MCPStreamablePath,
 		"mcpStreamableURL":  mcpURL,
-		"httpInvokePath":    SunnyNetHTTPAPIPrefix + "/invoke",
-		"httpEventsPath":    SunnyNetHTTPAPIPrefix + "/events",
-		"httpHealthPath":    SunnyNetHTTPAPIPrefix + "/health",
-		"httpSupportedOps":  SunnyNetHTTPAPIPrefix + "/supported-ops",
-		"httpApiPrefix":     SunnyNetHTTPAPIPrefix,
 	}
 	b, _ := json.Marshal(out)
 	return string(b)
 }
 
-// MCPListOpsJSON 能力目录。
+// MCPListOpsJSON 能力目录（含领域/动作元数据）。
 func (c *Control) MCPListOpsJSON() string {
 	return mcpcatalog.SupportedOpsJSON()
-}
-
-// MCPDocURL 返回 /doc 文档页完整 URL；未启用时为空。
-func (c *Control) MCPDocURL() string {
-	if c == nil {
-		return ""
-	}
-	c.mu.Lock()
-	httpAddr := c.httpListenAddr
-	httpOn := c.httpBr != nil && c.httpBr.Addr() != ""
-	c.mu.Unlock()
-	if !httpOn || httpAddr == "" {
-		return ""
-	}
-	return fmt.Sprintf("http://%s/doc", httpAddr)
 }
 
 // DefaultPort 默认监听端口。

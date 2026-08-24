@@ -5,7 +5,7 @@ import (
 	"changeme/Service/Tools"
 )
 
-// ReapplyEngineFromConfig 将当前 Config 中的引擎相关设置同步到运行中的 Sunny（MCP/UI 修改后调用）。
+// ReapplyEngineFromConfig 将当前 Config 中的抓包工具相关设置同步到运行中的 Sunny（MCP/UI 修改后调用）。
 func (g *AppMain) ReapplyEngineFromConfig() map[string]any {
 	if g.app == nil {
 		return map[string]any{"engineReady": false}
@@ -74,7 +74,7 @@ func (g *AppMain) engineSettingsSnapshot() map[string]any {
 	}
 }
 
-// settingsApplyResult MCP 写设置后的统一返回（含 applied 与引擎快照）。
+// settingsApplyResult MCP 写设置后的统一返回（含 applied 与抓包工具快照）。
 func settingsApplyResult(app *AppMain, extra map[string]any) map[string]any {
 	out := map[string]any{
 		"ok":      true,

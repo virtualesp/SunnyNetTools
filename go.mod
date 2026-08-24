@@ -9,11 +9,11 @@ require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/orcastor/fico v0.0.0-20241117150408-e3bea0a75fd1
-	github.com/qtgolang/SunnyNet v1.4.4
+	github.com/qtgolang/SunnyNet v1.4.9
 	github.com/rs/cors v1.11.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
-	github.com/wailsapp/wails/v3 v3.0.0-alpha.71
+	github.com/wailsapp/wails/v3 v3.0.0-alpha.91
 	golang.design/x/clipboard v0.7.1
 	golang.org/x/crypto v0.47.0
 	golang.org/x/sys v0.41.0
@@ -74,7 +74,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.8.0 // indirect
 	github.com/tmc/icns v0.0.0-20171229010138-5677fdfa7a3e // indirect
-	github.com/wailsapp/go-webview2 v1.0.23 // indirect
+	github.com/wailsapp/wails/webview2 v1.0.24 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

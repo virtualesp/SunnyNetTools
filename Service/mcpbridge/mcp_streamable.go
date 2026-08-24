@@ -3,6 +3,8 @@ package mcpbridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -11,75 +13,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// MCPStreamablePath 为 Cursor 等通过 Streamable HTTP 接入 MCP 的路径（与 REST /invoke、/events 不同）。
-const MCPStreamablePath = SunnyNetHTTPAPIPrefix + "/mcp"
-
+// newStreamableMCPHandler 使用官方 MCP SDK 构建 Streamable HTTP 服务，
+// 注册领域网关工具（sunnynet_<domain>），域内 op=list/describe/execute。
 func newStreamableMCPHandler(host *Host) http.Handler {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "sunnynet", Version: "1.0.0"}, &mcp.ServerOptions{
+	srv := mcp.NewServer(&mcp.Implementation{Name: "sunnynet", Version: "2.0.0"}, &mcp.ServerOptions{
 		Instructions: mcpcatalog.MCPStreamableInstructions,
 	})
-	for _, tt := range mcpcatalog.BridgeMCPTools() {
-		op := tt.Op
+	for _, tt := range mcpcatalog.GatewayTools() {
+		domain := tt.Domain
 		tool := &mcp.Tool{
 			Name:        tt.MCPName,
+			Title:       tt.Title,
 			Description: tt.Description,
-		}
-		if schema := mcpcatalog.ToolInputSchema(op); schema != nil {
-			tool.InputSchema = schema
+			InputSchema: mcpcatalog.GatewayInputSchema(),
 		}
 		mcp.AddTool(srv, tool, func(ctx context.Context, req *mcp.CallToolRequest, in map[string]any) (*mcp.CallToolResult, any, error) {
-			args := in
-			if args == nil {
-				args = map[string]any{}
-			}
-			rawAny, err := host.Invoke(op, args)
-			if err != nil {
-				var errRes mcp.CallToolResult
-				errRes.SetError(err)
-				return &errRes, nil, nil
-			}
-			// 与 REST /invoke 的 result 字段一致：直接返回业务 JSON 对象，避免多包一层 {"result":...}
-			switch v := rawAny.(type) {
-			case map[string]any:
-				return nil, v, nil
-			case json.RawMessage:
-				var out map[string]any
-				if len(v) > 0 {
-					_ = json.Unmarshal(v, &out)
-				}
-				if out == nil {
-					out = map[string]any{}
-				}
-				return nil, out, nil
-			case string:
-				s := strings.TrimSpace(v)
-				if s == "" {
-					return nil, map[string]any{}, nil
-				}
-				var out map[string]any
-				if json.Unmarshal([]byte(s), &out) == nil && out != nil {
-					return nil, out, nil
-				}
-				var arr []any
-				if json.Unmarshal([]byte(s), &arr) == nil {
-					return nil, map[string]any{"rules": arr, "total": len(arr)}, nil
-				}
-				return nil, map[string]any{"text": v}, nil
-			default:
-				raw, _ := json.Marshal(v)
-				var out map[string]any
-				if len(raw) > 0 && json.Unmarshal(raw, &out) == nil && out != nil {
-					return nil, out, nil
-				}
-				var arr []any
-				if len(raw) > 0 && json.Unmarshal(raw, &arr) == nil {
-					return nil, map[string]any{"data": arr}, nil
-				}
-				if out == nil {
-					out = map[string]any{}
-				}
-				return nil, out, nil
-			}
+			return gatewayCall(host, domain, in)
 		})
 	}
 	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
@@ -87,4 +36,116 @@ func newStreamableMCPHandler(host *Host) http.Handler {
 	}, &mcp.StreamableHTTPOptions{
 		Stateless: true,
 	})
+}
+
+// gatewayCall 处理领域网关调用：list / describe / execute。
+func gatewayCall(host *Host, domain string, in map[string]any) (*mcp.CallToolResult, any, error) {
+	if host == nil {
+		return nil, nil, errors.New("mcp host nil")
+	}
+	op := strings.ToLower(strings.TrimSpace(argString(in, "op")))
+	switch op {
+	case "list":
+		def, ok := mcpcatalog.FindDomain(domain)
+		if !ok {
+			return nil, nil, fmt.Errorf("未知领域: %s", domain)
+		}
+		actions, _ := mcpcatalog.ActionsForDomain(domain)
+		items := make([]map[string]any, 0, len(actions))
+		for _, a := range actions {
+			items = append(items, map[string]any{
+				"action":    a.Action,
+				"summary":   a.Summary,
+				"useWhen":   a.UseWhen,
+				"avoidWhen": a.AvoidWhen,
+				"risk":      a.Risk,
+			})
+		}
+		return nil, map[string]any{
+			"domain":      def.Name,
+			"toolName":    def.ToolName,
+			"title":       def.Title,
+			"description": def.Description,
+			"actions":     items,
+		}, nil
+	case "describe":
+		action := strings.TrimSpace(argString(in, "action"))
+		if action == "" {
+			return nil, nil, errors.New("describe 必须提供 action")
+		}
+		def, ok := mcpcatalog.FindAction(domain, action)
+		if !ok {
+			return nil, nil, fmt.Errorf("action %q 不属于 %s；请先 op=list", action, domain)
+		}
+		return nil, def, nil
+	case "execute":
+		action := strings.TrimSpace(argString(in, "action"))
+		if action == "" {
+			return nil, nil, errors.New("execute 必须提供 action")
+		}
+		def, ok := mcpcatalog.FindAction(domain, action)
+		if !ok {
+			return nil, nil, fmt.Errorf("action %q 不属于 %s；请先 op=list", action, domain)
+		}
+		params := mcpcatalog.NormalizeActionParams(def.LegacyOp, gatewayParams(in))
+		if err := mcpcatalog.ValidateActionParams(def.LegacyOp, params); err != nil {
+			return nil, nil, err
+		}
+		raw, err := host.Invoke(def.LegacyOp, params)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, resultToMap(raw), nil
+	default:
+		return nil, nil, errors.New("op 必须为 list、describe 或 execute")
+	}
+}
+
+func gatewayParams(in map[string]any) map[string]any {
+	raw, exists := in["params"]
+	if !exists || raw == nil {
+		return map[string]any{}
+	}
+	params, ok := raw.(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	return params
+}
+
+// resultToMap 将 host.Invoke 返回值规整为 MCP 工具 result（与旧 /invoke 的 result 字段一致）。
+func resultToMap(raw any) map[string]any {
+	switch v := raw.(type) {
+	case map[string]any:
+		return v
+	case json.RawMessage:
+		var out map[string]any
+		if len(v) > 0 && json.Unmarshal(v, &out) == nil && out != nil {
+			return out
+		}
+		var arr []any
+		if len(v) > 0 && json.Unmarshal(v, &arr) == nil {
+			return map[string]any{"data": arr}
+		}
+	case string:
+		s := strings.TrimSpace(v)
+		if s != "" {
+			var out map[string]any
+			if json.Unmarshal([]byte(s), &out) == nil && out != nil {
+				return out
+			}
+			var arr []any
+			if json.Unmarshal([]byte(s), &arr) == nil {
+				return map[string]any{"data": arr}
+			}
+			return map[string]any{"text": v}
+		}
+	default:
+		raw2, _ := json.Marshal(v)
+		var out map[string]any
+		if len(raw2) > 0 && json.Unmarshal(raw2, &out) == nil && out != nil {
+			return out
+		}
+	}
+	return map[string]any{}
 }

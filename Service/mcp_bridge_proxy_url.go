@@ -12,7 +12,7 @@ func proxyWayURLConvention() map[string]any {
 		"supportedTypes": []string{"http", "https", "socks5"},
 		"supportedSchemes": []string{"http", "https", "socks5", "socket"},
 		"auth":             "无账号：scheme://host:port；有账号：scheme://user:pass@host:port",
-		"note":             "仅支持 HTTP/HTTPS/SOCKS5 代理；socket:// 为 SOCKS5 的引擎写法（与 socks5:// 同类）",
+		"note":             "仅支持 HTTP/HTTPS/SOCKS5 代理；socket:// 为 SOCKS5 的 抓包工具写法（与 socks5:// 同类）",
 		"examples": []string{
 			"http://192.168.1.1:8080",
 			"http://admin:123456@192.168.1.1:8080",

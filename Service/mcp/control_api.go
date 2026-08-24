@@ -38,11 +38,3 @@ func DefaultPort() int {
 func ListOpsJSON() string {
 	return mcpcatalog.SupportedOpsJSON()
 }
-
-// DocURL 返回内置文档页地址；MCP 未启用时返回空字符串。
-func DocURL() string {
-	if mcpControl == nil {
-		return ""
-	}
-	return mcpControl.MCPDocURL()
-}

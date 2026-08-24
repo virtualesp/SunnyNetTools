@@ -72,6 +72,18 @@ func registerWindowFilesDropped(window string) {
 	})
 
 }
+// isRunDebug 通过 dev.bat / dev.sh 设置的环境变量判断是否为开发调试模式
+func isRunDebug() bool {
+	for _, key := range []string{"RUNDEBUG", "runDebug", "SUNNYNET_RUNDEBUG"} {
+		switch os.Getenv(key) {
+		case "", "0", "false", "no", "off", "n", "f":
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 func CreateMainWindow(assets embed.FS) *application.App {
 	Server := NewAppServer()
 	SetMCPServer(Server)
@@ -126,7 +138,10 @@ func CreateMainWindow(assets embed.FS) *application.App {
 	}()
 	go func() {
 		time.Sleep(1 * time.Second)
-		Config.AppList["Main"].OpenDevTools()
+		// 仅 dev 模式（dev.bat/dev.sh 设置 runDebug=true）下自动打开 DevTools
+		if isRunDebug() {
+			Config.AppList["Main"].OpenDevTools()
+		}
 	}()
 	Config.AppList["Main"].RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		CloseWindow()
@@ -149,6 +164,7 @@ func CreateMainWindow(assets embed.FS) *application.App {
 			CreateThemeWindow()
 			CreateOtherWindow()
 			CreateDebugWindow()
+			Config.AppList["Main"].Show()
 		}()
 	}
 

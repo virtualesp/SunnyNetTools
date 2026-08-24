@@ -16,7 +16,7 @@ func TestSupportedOpsJSONEnvelope(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &env); err != nil {
 		t.Fatal(err)
 	}
-	if env.Version != 1 {
+	if env.Version != 2 {
 		t.Fatalf("version: %d", env.Version)
 	}
 	if len(env.Ops) == 0 || len(env.Capabilities) == 0 {
@@ -57,37 +57,47 @@ func TestMainRowNoteSetInputSchemaHasRowIDs(t *testing.T) {
 }
 
 func TestBridgeMCPToolsMainRowNoteSetDescription(t *testing.T) {
+	// 扁平工具已移除：main_row_note_set 作为领域动作存在，通过 describe 返回详细描述。
 	tools := BridgeMCPTools()
-	var desc string
+	found := false
 	for _, tt := range tools {
-		if tt.Op == "main_row_note_set" {
-			desc = tt.Description
+		if tt.Domain != "" && tt.Op == "" {
+			found = true
 			break
 		}
 	}
-	if desc == "" {
-		t.Fatal("main_row_note_set tool not found")
+	if !found {
+		t.Fatal("no domain gateway tool registered")
 	}
-	if !strings.Contains(desc, "禁止") || !strings.Contains(desc, "rowIds") {
-		t.Fatalf("batch guidance missing: %s", desc)
+	def, ok := ActionByLegacyOp("main_row_note_set")
+	if !ok {
+		t.Fatal("main_row_note_set action not found")
+	}
+	if def.Domain != "traffic" {
+		t.Fatalf("domain %q", def.Domain)
+	}
+	if def.UseWhen == "" {
+		t.Fatal("empty useWhen description")
 	}
 }
 
 func TestBridgeMCPTools(t *testing.T) {
 	tools := BridgeMCPTools()
-	if len(tools) != len(SupportedBridgeOps) {
-		t.Fatalf("tools %d vs ops %d", len(tools), len(SupportedBridgeOps))
+	if len(tools) != len(domainDefinitions) {
+		t.Fatalf("gateway tools %d vs domains %d", len(tools), len(domainDefinitions))
 	}
 	for i, tt := range tools {
-		want := BridgeMCPHTTPPrefix + SupportedBridgeOps[i]
-		if tt.MCPName != want {
-			t.Fatalf("idx %d: mcp name %q want %q", i, tt.MCPName, want)
+		if tt.Domain == "" || tt.Op != "" {
+			t.Fatalf("idx %d: expected gateway tool, got domain=%q op=%q", i, tt.Domain, tt.Op)
 		}
-		if tt.Op != SupportedBridgeOps[i] {
-			t.Fatalf("idx %d: op %q want %q", i, tt.Op, SupportedBridgeOps[i])
+		if tt.MCPName == "" || tt.Description == "" {
+			t.Fatalf("idx %d: empty name/description", i)
 		}
-		if tt.Description == "" {
-			t.Fatalf("empty description for %q", tt.MCPName)
+		if tt.Title == "" {
+			t.Fatalf("idx %d: empty title for %q", i, tt.Domain)
+		}
+		if _, ok := FindDomain(tt.Domain); !ok {
+			t.Fatalf("idx %d: unknown domain %q", i, tt.Domain)
 		}
 	}
 }

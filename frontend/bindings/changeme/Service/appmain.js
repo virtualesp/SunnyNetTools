@@ -794,14 +794,6 @@ export function MCPDisable() {
 }
 
 /**
- * MCPDocURL 返回 MCP 文档页 URL；服务未启用时为空。
- * @returns {$CancellablePromise<string>}
- */
-export function MCPDocURL() {
-    return $Call.ByID(2839039414);
-}
-
-/**
  * MCPEnable 启动 MCP HTTP 桥；port<=0 使用默认端口；成功返回空字符串。
  * @param {number} port
  * @returns {$CancellablePromise<string>}
@@ -931,7 +923,7 @@ export function ProxyWayUpdate(id, URL, State, Note) {
 }
 
 /**
- * ReapplyEngineFromConfig 将当前 Config 中的引擎相关设置同步到运行中的 Sunny（MCP/UI 修改后调用）。
+ * ReapplyEngineFromConfig 将当前 Config 中的抓包工具相关设置同步到运行中的 Sunny（MCP/UI 修改后调用）。
  * @returns {$CancellablePromise<{ [_ in string]?: any }>}
  */
 export function ReapplyEngineFromConfig() {

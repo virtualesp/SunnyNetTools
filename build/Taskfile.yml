@@ -111,10 +111,13 @@ tasks:
   dev:frontend:
     summary: Runs the frontend in development mode
     dir: frontend
+    env:
+      VITE_PORT: '{{.VITE_PORT | default "9245"}}'
+      VITE_WAILS_ORIGIN: 'http://wails.localhost:{{.VITE_PORT | default "9245"}}'
     deps:
       - task: install:frontend:deps
     cmds:
-      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+      - npm run dev
 
   update:build-assets:
     summary: Updates the build assets

@@ -119,7 +119,7 @@ type StreamCountIn struct {
 	StreamKey string `json:"streamKey"`
 }
 
-// EngineStartIn 启动引擎。
+// EngineStartIn 启动抓包工具。
 type EngineStartIn struct {
 	Port            int  `json:"port,omitempty"`
 	UseSystemProxy  bool `json:"useSystemProxy,omitempty"`

@@ -20,7 +20,7 @@
 
 - 可视化会话列表与详情编辑（AG Grid + Monaco 编辑器）
 - 完整的设置中心（规则、证书、代理、驱动、主题等）
-- **MCP（Model Context Protocol）HTTP 桥**，供 Cursor、Claude 等客户端以 `op` 方式驱动主程序
+- **MCP（Model Context Protocol）Streamable HTTP 桥**，供 Cursor、Claude 等客户端按领域动作驱动主程序
 
 > SunnyNet 负责底层网络栈；SunnyNetTools 负责交互、配置持久化与 MCP 对外接口。
 
@@ -64,9 +64,9 @@
 - **请求证书**：多证书管理，解析/发送角色，P12 支持
 - **Go 脚本**：SunnyNet 脚本回调，可自定义处理逻辑（脚本日志窗口）
 
-### 引擎与系统
+### 抓包工具与系统
 
-- 监听端口、启动/停止 Sunny 引擎
+- 监听端口、启动/停止 Sunny 抓包工具
 - 一键设置 / 取消**系统代理**（Windows）
 - 高级选项：禁用 TCP/UDP、限制 POST 体大小、禁用浏览器缓存、出口路由、Socks5 认证等
 - **TLS / HTTP2**：JA3、HTTP/2 指纹模板、协议优先级
@@ -93,18 +93,13 @@
 
 默认**不自动启动**，可在底部状态栏 **MCP** 入口手动启用（默认端口 `6987`）。
 
-启用后提供：
+启用后提供唯一 **Streamable HTTP** 端点：
 
+| 端点                          | 用途                        |
+| --------------------------- | ------------------------- |
+| `http://127.0.0.1:6987/mcp` | Cursor / Claude 等接入 MCP    |
 
-| 端点                                         | 用途                          |
-| ------------------------------------------ | --------------------------- |
-| `GET /doc`                                 | 内置 MCP 文档页                  |
-| `GET /sunnynet/tools/health`               | 健康检查                        |
-| `GET /sunnynet/tools/supported-ops`        | 能力目录 JSON                   |
-| `POST /sunnynet/tools/invoke`              | REST 调用业务 `op`              |
-| `GET /sunnynet/tools/events`               | 列表变更 SSE                    |
-| `http://127.0.0.1:6987/sunnynet/tools/mcp` | Cursor 等 **Streamable MCP** |
-
+按能力分为 **8 个领域工具**（`sunnynet_system`、`sunnynet_traffic`、`sunnynet_content`、`sunnynet_session`、`sunnynet_breakpoint`、`sunnynet_rules`、`sunnynet_config`、`sunnynet_device`），每个工具以 `op=list / describe / execute` 分级调用，覆盖引擎、主列表、正文、会话、断点、规则、配置与设备等能力。
 
 **Cursor `mcp.json` 示例：**
 
@@ -112,13 +107,13 @@
 {
   "mcpServers": {
     "SunnyNetTools": {
-      "url": "http://127.0.0.1:6987/sunnynet/tools/mcp"
+      "url": "http://127.0.0.1:6987/mcp"
     }
   }
 }
 ```
 
-典型 `op` 能力包括：`get_status`、`engine_start` / `engine_stop`、`main_slice`、`main_search`、`break_sync_request` / `break_sync_response`、`http_get_part`、`stream_send`、`config_*` 规则与证书、`records_import` / `records_export`、`session_pack_export` 等。完整列表见启用后的文档页或 `list_supported_ops`。
+典型动作包括：`engine.start / engine.stop`、`list.slice / list.search`、`break.syncRequest / break.syncResponse`、`http.part / stream.send`、`config_*` 规则与证书、`session.import / session.export` 等。完整清单见领域内 `op=list` 或 `list_supported_ops`。
 
 ---
 
@@ -177,10 +172,11 @@ task build
 ```
 SunnyNetTools/
 ├── main.go                 # 程序入口
-├── Service/                # Go 业务：抓包回调、配置、MCP 桥、工具
-│   ├── mcp/                # MCP HTTP 服务与文档
-│   ├── mcpbridge/        # invoke / SSE / Streamable MCP
-│   ├── mcpcatalog/       # op 能力与 JSON Schema
+├── Service/                # Go 业务：抓包回调、配置、MCP、工具
+│   ├── mcpops_*.go         # MCP 领域操作（按能力分级：system/traffic/rules/...）
+│   ├── mcp/                # MCP 门面：生命周期控制与共享辅助
+│   ├── mcpbridge/        # Streamable HTTP /mcp 传输（官方 MCP SDK）
+│   ├── mcpcatalog/       # 领域/动作能力目录与 JSON Schema
 │   └── Session/          # 会话存储、导入导出、代码生成
 ├── frontend/               # Vue 3 前端
 └── build/                  # Wails 构建配置与平台任务
